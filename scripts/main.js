@@ -7,10 +7,20 @@ const LIQUID_INTERVAL = 4;     // drill liquid dump every N frames
 const NO_PATH = 99999;
 
 const PumpClass = (typeof Pump !== "undefined") ? Pump : null;
+const ReactorClasses = [];
+if (typeof NuclearReactor !== "undefined") ReactorClasses.push(NuclearReactor);
+if (typeof ImpactReactor !== "undefined") ReactorClasses.push(ImpactReactor);
+if (typeof VariableReactor !== "undefined") ReactorClasses.push(VariableReactor);
 
-// A "chain" is a group of the same-kind blocks touching each other. Exits are
+function isReactor(b) {
+    for (let i = 0; i < ReactorClasses.length; i++) {
+        if (b instanceof ReactorClasses[i]) return true;
+    }
+    return false;
+}
+
+// A "chain" is a group of a same-kind blocks touching each other. Exits are
 // neighbouring blocks of another kind that can actually take items/liquid.
-
 const KINDS = {
     drill: {
         is: b => b instanceof Drill,
@@ -19,6 +29,11 @@ const KINDS = {
     pump: {
         is: b => PumpClass != null && b instanceof PumpClass,
         exit: b => b.hasLiquids
+    },
+    // Reactors have no "exit": touching reactors just balance their coolant
+    reactor: {
+        is: b => isReactor(b),
+        exit: b => false
     }
 };
 
@@ -29,7 +44,7 @@ let dirty = false;
 let lastChange = 0;
 
 function logErr(where, e) {
-    try { Log.err("[DrillChain] error in " + where + ": " + e); } catch (_) {}
+    try { Log.err("[Fluxweave] error in " + where + ": " + e); } catch (_) {}
 }
 
 function kindOf(build) {
@@ -37,6 +52,7 @@ function kindOf(build) {
     if (b == null) return null;
     if (KINDS.drill.is(b) && build.items != null) return "drill";
     if (KINDS.pump.is(b) && build.liquids != null) return "pump";
+    if (KINDS.reactor.is(b) && build.liquids != null) return "reactor";
     return null;
 }
 
@@ -58,13 +74,14 @@ function track(build) {
 
 // Distance of every block to the nearest chain member touching a valid exit.
 // Items/liquid only ever move to a strictly closer member, so they always
-// flow toward the exit and every member can drain completely (no ping-pong type shi, that shi lags the game fr).
+// flow toward the exit and every member can drain completely (no ping-pong type shi that makes the game stutter or lag).
 function rebuildDistances() {
     dirty = false;
     let queue = [];
 
     for (let i = 0; i < all.length; i++) {
         let w = all[i];
+        if (w.k === "reactor") continue;
         let K = KINDS[w.k];
         w.d = NO_PATH;
         let prox = w.b.proximity;
@@ -140,7 +157,7 @@ function processDrill(w, doLiquid) {
 
     let items = drill.items;
     if (items.total() === 0) return;
-    if (w.d >= NO_PATH) return;
+    if (w.d >= NO_PATH) return;   // no exit reachable/no output line
 
     let prox = drill.proximity;
     let pSize = prox.size;
@@ -181,6 +198,8 @@ function processDrill(w, doLiquid) {
     }
 }
 
+// Vanilla pumps already push liquid into adjacent conduits/consumers, so we
+// only add the part vanilla lacks: forwarding to a closer pump in the chain.
 function processPump(w) {
     let pump = w.b;
     let liq = pump.liquids;
@@ -211,6 +230,39 @@ function processPump(w) {
     }
 }
 
+// Touching reactors balance their coolant level (fuller -> emptier, never
+// below the neighbour's level), so one conduit can feed a whole row.
+// Only liquid is shared. Fuel/items are never touched.
+function processReactor(w) {
+    let r = w.b;
+    let liq = r.liquids;
+    if (liq.currentAmount() < 0.01) return;
+    let liquid = liq.current();
+    if (liquid == null) return;
+
+    let cap = r.block.liquidCapacity;
+    let prox = r.proximity;
+    for (let j = 0; j < prox.size; j++) {
+        let t = prox.get(j);
+        if (t == null || t.liquids == null || !KINDS.reactor.is(t.block)) continue;
+
+        let tl = t.liquids;
+        if (!(tl.current() == liquid || tl.currentAmount() < 0.2)) continue;
+
+        let tcap = t.block.liquidCapacity;
+        let mine = liq.get(liquid);
+        let theirs = tl.get(liquid);
+        let diff = mine / cap - theirs / tcap;
+        if (diff <= 0) continue;
+
+        let move = Math.min(diff * cap / 2, tcap - theirs, mine);
+        if (move > 0.01) {
+            liq.remove(liquid, move);
+            tl.add(liquid, move);
+        }
+    }
+}
+
 Events.run(Trigger.update, () => {
     if (Vars.state.isPaused()) return;
     tick++;
@@ -231,8 +283,10 @@ Events.run(Trigger.update, () => {
                 remove = true;
             } else if (w.k === "drill") {
                 processDrill(w, doLiquid);
-            } else {
+            } else if (w.k === "pump") {
                 processPump(w);
+            } else {
+                processReactor(w);
             }
         } catch (e) {
             logErr("update", e);
