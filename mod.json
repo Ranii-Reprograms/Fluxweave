@@ -1,8 +1,8 @@
 {
-    "name": "Drill-Pump-Chaining",
-    "displayName": "Drill & Pump Chaining",
+    "name": "fluxweave",
+    "displayName": "Fluxweave",
     "author": "Ranii",
-    "description": "Chained drills and chained pumps share their own respective item/liquid, so only one block in a chain needs an output. Optimized to reduce lag.",
-    "version": "1.1",
+    "description": "Touching blocks work together as one; drills, pumps, reactors. A single input or output serves the whole line.",
+    "version": "1.6",
     "minGameVersion": 146
 }
