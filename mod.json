@@ -1,0 +1,8 @@
+{
+    "name": "Drill-Pump-Chaining",
+    "displayName": "Drill & Pump Chaining",
+    "author": "Ranii",
+    "description": "Chained drills and chained pumps share their own respective item/liquid, so only one block in a chain needs an output. Optimized to reduce lag.",
+    "version": "1",
+    "minGameVersion": 146
+}
