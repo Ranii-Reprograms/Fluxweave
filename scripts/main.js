@@ -5,8 +5,11 @@ const LIQUID_CAPACITY = 150;   // per pump
 const MAX_TRANSFERS = 8;       // items per drill per frame
 const LIQUID_INTERVAL = 4;     // drill liquid dump every N frames
 const NO_PATH = 99999;
+const SHARE_FACTORY_ITEMS = true;  // set to false to share only liquids between factories
+const FACTORY_ITEM_INTERVAL = 3;   // share factory items every N frames
 
 const PumpClass = (typeof Pump !== "undefined") ? Pump : null;
+const CrafterClass = (typeof GenericCrafter !== "undefined") ? GenericCrafter : null;
 const ReactorClasses = [];
 if (typeof NuclearReactor !== "undefined") ReactorClasses.push(NuclearReactor);
 if (typeof ImpactReactor !== "undefined") ReactorClasses.push(ImpactReactor);
@@ -19,7 +22,7 @@ function isReactor(b) {
     return false;
 }
 
-// A "chain" is a group of a same-kind blocks touching each other. Exits are
+// A "chain" is a group of same-kind blocks touching each other. Exits are
 // neighbouring blocks of another kind that can actually take items/liquid.
 const KINDS = {
     drill: {
@@ -34,8 +37,74 @@ const KINDS = {
     reactor: {
         is: b => isReactor(b),
         exit: b => false
+    },
+    // Factories (crafters) also have no exit: touching factories of the same
+    // type balance the inputs they consume
+    factory: {
+        is: b => CrafterClass != null && b instanceof CrafterClass && !isReactor(b),
+        exit: b => false
     }
 };
+
+// Per block type: which items/liquids it consumes as inputs (cached).
+// Items it also produces are excluded, so products are never passed around.
+let inputCache = {};
+
+function outputItemList(block) {
+    let list = [];
+    try {
+        if (block.outputItems != null) {
+            for (let i = 0; i < block.outputItems.length; i++) list.push(block.outputItems[i].item);
+        } else if (block.outputItem != null) {
+            list.push(block.outputItem.item);
+        }
+    } catch (_) {}
+    return list;
+}
+
+function outputLiquidList(block) {
+    let list = [];
+    try {
+        if (block.outputLiquids != null) {
+            for (let i = 0; i < block.outputLiquids.length; i++) list.push(block.outputLiquids[i].liquid);
+        } else if (block.outputLiquid != null) {
+            list.push(block.outputLiquid.liquid);
+        }
+    } catch (_) {}
+    return list;
+}
+
+function inputsOf(block) {
+    let c = inputCache[block.id];
+    if (c != null) return c;
+
+    let outItems = outputItemList(block);
+    let outLiquids = outputLiquidList(block);
+    let outItemIds = {};
+    for (let i = 0; i < outItems.length; i++) outItemIds[outItems[i].id] = true;
+
+    let items = [];
+    let liquids = [];
+
+    let allItems = Vars.content.items();
+    for (let i = 0; i < allItems.size; i++) {
+        let it = allItems.get(i);
+        if (block.consumesItem(it) && outItemIds[it.id] !== true) items.push(it);
+    }
+    let allLiquids = Vars.content.liquids();
+    for (let i = 0; i < allLiquids.size; i++) {
+        let l = allLiquids.get(i);
+        if (block.consumesLiquid(l)) liquids.push(l);
+    }
+
+    // products that are not also consumed
+    let pItems = outItems.filter(it => !block.consumesItem(it));
+    let pLiquids = outLiquids.filter(l => !block.consumesLiquid(l));
+
+    c = { items: items, liquids: liquids, outItems: pItems, outLiquids: pLiquids };
+    inputCache[block.id] = c;
+    return c;
+}
 
 let all = [];
 let byId = {};
@@ -53,6 +122,10 @@ function kindOf(build) {
     if (KINDS.drill.is(b) && build.items != null) return "drill";
     if (KINDS.pump.is(b) && build.liquids != null) return "pump";
     if (KINDS.reactor.is(b) && build.liquids != null) return "reactor";
+    if (KINDS.factory.is(b)) {
+        let inp = inputsOf(b);
+        if (inp.items.length + inp.liquids.length + inp.outItems.length + inp.outLiquids.length > 0) return "factory";
+    }
     return null;
 }
 
@@ -74,14 +147,14 @@ function track(build) {
 
 // Distance of every block to the nearest chain member touching a valid exit.
 // Items/liquid only ever move to a strictly closer member, so they always
-// flow toward the exit and every member can drain completely (no ping-pong type shi that makes the game stutter or lag).
+// flow toward the exit and every member can drain completely (no back and forth type shit that unloaders do, its annoying.).
 function rebuildDistances() {
     dirty = false;
     let queue = [];
 
     for (let i = 0; i < all.length; i++) {
         let w = all[i];
-        if (w.k === "reactor") continue;
+        if (w.k === "reactor" || w.k === "factory") continue;
         let K = KINDS[w.k];
         w.d = NO_PATH;
         let prox = w.b.proximity;
@@ -130,6 +203,7 @@ Events.on(EventType.WorldLoadEvent, cons(e => {
     try {
         all = [];
         byId = {};
+        inputCache = {};
         Groups.build.each(cons(b => track(b)));
         dirty = true;
         lastChange = tick;
@@ -157,7 +231,7 @@ function processDrill(w, doLiquid) {
 
     let items = drill.items;
     if (items.total() === 0) return;
-    if (w.d >= NO_PATH) return;   // no exit reachable/no output line
+    if (w.d >= NO_PATH) return;   // just a sensor if no exit/output line is reachable
 
     let prox = drill.proximity;
     let pSize = prox.size;
@@ -263,10 +337,88 @@ function processReactor(w) {
     }
 }
 
+// Touching factories of the same type balance the inputs they consume:
+// liquids by level, items by a gradient of at least 2 (so nothing goes back and forth, unlike unloaders...).
+// Products are never moved. Only exact same block types interact.
+function processFactory(w, doItems) {
+    let f = w.b;
+    let block = f.block;
+    let inp = inputsOf(block);
+    let prox = f.proximity;
+
+    for (let j = 0; j < prox.size; j++) {
+        let t = prox.get(j);
+        if (t == null || t.block != block) continue;
+
+        if (f.liquids != null && t.liquids != null) {
+            let cap = block.liquidCapacity;
+            for (let k = 0; k < inp.liquids.length; k++) {
+                let L = inp.liquids[k];
+                let mine = f.liquids.get(L);
+                if (mine < 0.01) continue;
+                let theirs = t.liquids.get(L);
+                if (mine <= theirs) continue;
+                let move = Math.min((mine - theirs) / 2, cap - theirs);
+                if (move > 0.01 && t.acceptLiquid(f, L)) {
+                    f.liquids.remove(L, move);
+                    t.handleLiquid(f, L, move);
+                }
+            }
+        }
+
+        // Products: spread toward neighbours with less, so whichever factory
+        // touches an output (conduit, conveyor, ...) can drain the whole chain.
+        // The factories' own vanilla dumping does the actual output.
+        if (f.liquids != null && t.liquids != null) {
+            let cap = block.liquidCapacity;
+            for (let k = 0; k < inp.outLiquids.length; k++) {
+                let L = inp.outLiquids[k];
+                let mine = f.liquids.get(L);
+                if (mine < 0.01) continue;
+                let theirs = t.liquids.get(L);
+                if (mine <= theirs) continue;
+                let move = Math.min((mine - theirs) / 2, cap - theirs);
+                if (move > 0.01) {
+                    f.liquids.remove(L, move);
+                    t.liquids.add(L, move);
+                }
+            }
+        }
+
+        if (doItems && SHARE_FACTORY_ITEMS && f.items != null && t.items != null) {
+            for (let k = 0; k < inp.outItems.length; k++) {
+                let it = inp.outItems[k];
+                let mine = f.items.get(it);
+                if (mine < 2) continue;
+                let theirs = t.items.get(it);
+                if (mine - theirs < 2) continue;
+                if (theirs < block.itemCapacity) {
+                    f.items.remove(it, 1);
+                    t.items.add(it, 1);
+                }
+            }
+        }
+
+        if (doItems && SHARE_FACTORY_ITEMS && f.items != null && t.items != null) {
+            for (let k = 0; k < inp.items.length; k++) {
+                let it = inp.items[k];
+                let mine = f.items.get(it);
+                if (mine < 2) continue;
+                if (mine - t.items.get(it) < 2) continue;
+                if (t.acceptItem(f, it)) {
+                    f.items.remove(it, 1);
+                    t.handleItem(f, it);
+                }
+            }
+        }
+    }
+}
+
 Events.run(Trigger.update, () => {
     if (Vars.state.isPaused()) return;
     tick++;
     let doLiquid = (tick % LIQUID_INTERVAL) === 0;
+    let doFactoryItems = (tick % FACTORY_ITEM_INTERVAL) === 0;
 
     // wait a few frames after a change so block proximity has updated
     if (dirty && tick - lastChange >= 6) {
@@ -285,8 +437,10 @@ Events.run(Trigger.update, () => {
                 processDrill(w, doLiquid);
             } else if (w.k === "pump") {
                 processPump(w);
-            } else {
+            } else if (w.k === "reactor") {
                 processReactor(w);
+            } else {
+                processFactory(w, doFactoryItems);
             }
         } catch (e) {
             logErr("update", e);
