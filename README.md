@@ -2,7 +2,7 @@
 - Touching blocks work together as one. Link drills, pumps and reactors into a chain, and a single input or output serves the whole line.
 
 # What it does
-- Drills: each drill holds up to 150 items. Items flow through the chain toward the drill touching a conveyor, core or other block that accepts items, and every drill drains completely.
+- Drills: each drill holds up to 150 items. Items flow through the chain toward the drill touching a conveyor, core or other block that accepts items, and every drill drains completely. Boost liquid like water is shared too, so one pipe into a single drill supplies the whole chain, albeit drills from the far end of a liquid supply may fill slower, shouldn't matter tho if you have a strong conduit (or just use the instant liquid travel method; i.e liquid junctions/container chaining).
 - Pumps: same idea, but each pump holds 150 liquid. Liquid is forwarded toward the pump touching a conduit or other liquid block.
 - Reactors: touching reactors balance their coolant level, fuller to emptier, so a single conduit into one reactor supplies the rest. Only coolant is shared. Fuel and other items are never moved between reactors.
 
