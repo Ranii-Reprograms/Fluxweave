@@ -1,5 +1,5 @@
 # Fluxweave
-- Touching blocks work together as one. Link drills, pumps and reactors into a chain, and a single input or output serves the whole line.
+- Touching blocks work together as one; drills/pumps/factories/reactors. A single input or output serves the whole line.
 
 # Reasoning
 - I made it to be less bothered about adding seperate input/output lines.. yes I'm lazy xd
