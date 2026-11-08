@@ -2,7 +2,7 @@
     "name": "fluxweave",
     "displayName": "Fluxweave",
     "author": "Ranii",
-    "description": "Touching blocks work together as one; drills, pumps, reactors. A single input or output serves the whole line.",
+    "description": "Touching blocks work together as one; drills/pumps/factories/reactors. A single input or output serves the whole line.",
     "version": "1.8",
     "minGameVersion": 146
 }
