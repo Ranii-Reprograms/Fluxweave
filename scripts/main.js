@@ -10,6 +10,7 @@ const FACTORY_ITEM_INTERVAL = 3;   // share factory items every N frames
 
 const PumpClass = (typeof Pump !== "undefined") ? Pump : null;
 const CrafterClass = (typeof GenericCrafter !== "undefined") ? GenericCrafter : null;
+const GeneratorClass = (typeof ConsumeGenerator !== "undefined") ? ConsumeGenerator : null;
 const ReactorClasses = [];
 if (typeof NuclearReactor !== "undefined") ReactorClasses.push(NuclearReactor);
 if (typeof ImpactReactor !== "undefined") ReactorClasses.push(ImpactReactor);
@@ -41,7 +42,10 @@ const KINDS = {
     // Factories (crafters) also have no exit: touching factories of the same
     // type balance the inputs they consume
     factory: {
-        is: b => CrafterClass != null && b instanceof CrafterClass && !isReactor(b),
+        is: b => !isReactor(b) && (
+            (CrafterClass != null && b instanceof CrafterClass) ||
+            (GeneratorClass != null && b instanceof GeneratorClass)
+        ),
         exit: b => false
     }
 };
