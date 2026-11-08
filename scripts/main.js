@@ -7,6 +7,7 @@ const LIQUID_INTERVAL = 4;     // drill liquid dump every N frames
 const NO_PATH = 99999;
 const SHARE_FACTORY_ITEMS = true;  // set to false to share only liquids between factories
 const FACTORY_ITEM_INTERVAL = 3;   // share factory items every N frames
+                                   // host/device dependent
 
 const PumpClass = (typeof Pump !== "undefined") ? Pump : null;
 const CrafterClass = (typeof GenericCrafter !== "undefined") ? GenericCrafter : null;
@@ -22,7 +23,7 @@ function isReactor(b) {
     }
     return false;
 }
-
+// The Idea:
 // A "chain" is a group of same-kind blocks touching each other. Exits are
 // neighbouring blocks of another kind that can actually take items/liquid.
 const KINDS = {
@@ -39,8 +40,8 @@ const KINDS = {
         is: b => isReactor(b),
         exit: b => false
     },
-    // Factories (crafters) also have no exit: touching factories of the same
-    // type balance the inputs they consume
+    // Factories (crafters) and fuel-burning generators also have no exit:
+    // touching ones of the same type balance the inputs they consume
     factory: {
         is: b => !isReactor(b) && (
             (CrafterClass != null && b instanceof CrafterClass) ||
@@ -111,7 +112,7 @@ function inputsOf(block) {
 }
 
 let all = [];
-let byId = {};
+let byId = {};   // plain objects: JS Set/Map clear() crashes on Android
 let tick = 0;
 let dirty = false;
 let lastChange = 0;
@@ -139,7 +140,7 @@ function track(build) {
         let k = kindOf(build);
         if (k == null) return;
         if (byId[build.id] != null) return;
-        let w = { b: build, k: k, rot: 0, d: NO_PATH };
+        let w = { b: build, k: k, rot: 0, d: NO_PATH, exL: false, exI: false, missL: 0, missI: 0, dL: NO_PATH, dI: NO_PATH };
         byId[build.id] = w;
         all.push(w);
         dirty = true;
@@ -151,7 +152,7 @@ function track(build) {
 
 // Distance of every block to the nearest chain member touching a valid exit.
 // Items/liquid only ever move to a strictly closer member, so they always
-// flow toward the exit and every member can drain completely (no back and forth type shit that unloaders do, its annoying.).
+// flow toward the exit and every member can drain completely (no back and forth ping-pong shit).
 function rebuildDistances() {
     dirty = false;
     let queue = [];
@@ -187,6 +188,72 @@ function rebuildDistances() {
             }
         }
     }
+
+    // Factory outputs: distance (in same-type factories) to the nearest factory
+    // that touches something accepting its product.
+    let qL = [];
+    let qI = [];
+    for (let i = 0; i < all.length; i++) {
+        let w = all[i];
+        if (w.k !== "factory") continue;
+        w.dL = w.exL ? 0 : NO_PATH;
+        w.dI = w.exI ? 0 : NO_PATH;
+        if (w.exL) qL.push(w);
+        if (w.exI) qI.push(w);
+    }
+    factoryBfs(qL, "dL");
+    factoryBfs(qI, "dI");
+}
+
+function factoryBfs(queue, key) {
+    let head = 0;
+    while (head < queue.length) {
+        let w = queue[head++];
+        let block = w.b.block;
+        let prox = w.b.proximity;
+        for (let j = 0; j < prox.size; j++) {
+            let t = prox.get(j);
+            if (t == null || t.block != block) continue;
+            let tw = byId[t.id];
+            if (tw != null && tw.k === "factory" && tw[key] > w[key] + 1) {
+                tw[key] = w[key] + 1;
+                queue.push(tw);
+            }
+        }
+    }
+}
+
+// Sticky exit detection: a factory counts as an "exit" for its product while a
+// neighbouring block of another type keeps accepting it. Checked every few
+// frames; the flag is dropped only after ~2 seconds of nothing accepting.
+function detectExits(w) {
+    let f = w.b;
+    let block = f.block;
+    let inp = inputsOf(block);
+    let prox = f.proximity;
+
+    let accL = false;
+    let accI = false;
+    for (let j = 0; j < prox.size; j++) {
+        let t = prox.get(j);
+        if (t == null || t.block == block) continue;
+        if (!accL && f.liquids != null && t.block.hasLiquids) {
+            for (let k = 0; k < inp.outLiquids.length; k++) {
+                if (t.acceptLiquid(f, inp.outLiquids[k])) { accL = true; break; }
+            }
+        }
+        if (!accI && SHARE_FACTORY_ITEMS && f.items != null && t.block.hasItems) {
+            for (let k = 0; k < inp.outItems.length; k++) {
+                if (t.acceptItem(f, inp.outItems[k])) { accI = true; break; }
+            }
+        }
+    }
+
+    if (accL) { w.missL = 0; if (!w.exL) { w.exL = true; dirty = true; lastChange = tick; } }
+    else if (w.exL && ++w.missL >= 12) { w.exL = false; w.missL = 0; dirty = true; lastChange = tick; }
+
+    if (accI) { w.missI = 0; if (!w.exI) { w.exI = true; dirty = true; lastChange = tick; } }
+    else if (w.exI && ++w.missI >= 12) { w.exI = false; w.missI = 0; dirty = true; lastChange = tick; }
 }
 
 Events.on(EventType.ClientLoadEvent, cons(e => {
@@ -235,7 +302,8 @@ function processDrill(w, doLiquid) {
 
     let items = drill.items;
     if (items.total() === 0) return;
-    if (w.d >= NO_PATH) return;   // just a sensor if no exit/output line is reachable
+    if (w.d >= NO_PATH) return;   // reminder to self: this line regulates all the
+                                  // machines when no exit/output line is reachable
 
     let prox = drill.proximity;
     let pSize = prox.size;
@@ -310,7 +378,8 @@ function processPump(w) {
 
 // Touching reactors balance their coolant level (fuller -> emptier, never
 // below the neighbour's level), so one conduit can feed a whole row.
-// Only liquid is shared. Fuel/items are never touched.
+// Only liquid is shared. Fuel/items are never touched..
+// because they will explode if you fail to supply the coolant first xd
 function processReactor(w) {
     let r = w.b;
     let liq = r.liquids;
@@ -341,14 +410,18 @@ function processReactor(w) {
     }
 }
 
-// Touching factories of the same type balance the inputs they consume:
-// liquids by level, items by a gradient of at least 2 (so nothing goes back and forth, unlike unloaders...).
-// Products are never moved. Only exact same block types interact.
+// Touching factories of the same type balance the inputs they consume
+// (liquids by level, items by a gradient of at least 2 so nothing ping-pongs)
+// (Im trying to avoid what unloaders do when they're in close contact to each factory)
+// and drain their products toward whichever factory touches an output.
+// Only exact same block types interact.
 function processFactory(w, doItems) {
     let f = w.b;
     let block = f.block;
     let inp = inputsOf(block);
     let prox = f.proximity;
+
+    if (((tick + f.id) % 10) === 0) detectExits(w);
 
     for (let j = 0; j < prox.size; j++) {
         let t = prox.get(j);
@@ -370,9 +443,12 @@ function processFactory(w, doItems) {
             }
         }
 
-        // Products: spread toward neighbours with less, so whichever factory
-        // touches an output (conduit, conveyor, ...) can drain the whole chain.
+        // Products: once a factory is known to touch an output, everything is
+        // drained towards it through strictly closer factories (nothing is left
+        // behind). Until an output is found, products just spread evenly.
         // The factories' own vanilla dumping does the actual output.
+        let tw = byId[t.id];
+
         if (f.liquids != null && t.liquids != null) {
             let cap = block.liquidCapacity;
             for (let k = 0; k < inp.outLiquids.length; k++) {
@@ -380,8 +456,12 @@ function processFactory(w, doItems) {
                 let mine = f.liquids.get(L);
                 if (mine < 0.01) continue;
                 let theirs = t.liquids.get(L);
-                if (mine <= theirs) continue;
-                let move = Math.min((mine - theirs) / 2, cap - theirs);
+                let move = 0;
+                if (w.dL < NO_PATH) {
+                    if (tw != null && tw.dL < w.dL) move = Math.min(mine, cap - theirs);
+                } else if (mine > theirs) {
+                    move = Math.min((mine - theirs) / 2, cap - theirs);
+                }
                 if (move > 0.01) {
                     f.liquids.remove(L, move);
                     t.liquids.add(L, move);
@@ -393,12 +473,18 @@ function processFactory(w, doItems) {
             for (let k = 0; k < inp.outItems.length; k++) {
                 let it = inp.outItems[k];
                 let mine = f.items.get(it);
-                if (mine < 2) continue;
+                if (mine < 1) continue;
                 let theirs = t.items.get(it);
-                if (mine - theirs < 2) continue;
-                if (theirs < block.itemCapacity) {
-                    f.items.remove(it, 1);
-                    t.items.add(it, 1);
+                if (theirs >= block.itemCapacity) continue;
+                let n = 0;
+                if (w.dI < NO_PATH) {
+                    if (tw != null && tw.dI < w.dI) n = Math.min(mine, block.itemCapacity - theirs, 3);
+                } else if (mine >= 2 && mine - theirs >= 2) {
+                    n = 1;
+                }
+                if (n > 0) {
+                    f.items.remove(it, n);
+                    t.items.add(it, n);
                 }
             }
         }
