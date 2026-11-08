@@ -24,3 +24,6 @@
 
 # Credits
 Based on unified-drills by Foxelling (https://github.com/Foxelling/unified-drills), which had the idea of chained drills sharing one inventory 🤝.
+
+# Also
+- Ben Bagul
