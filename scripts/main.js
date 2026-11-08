@@ -1,7 +1,7 @@
 "use strict";
 
-const ITEM_CAPACITY = 150;     // per drill
-const LIQUID_CAPACITY = 150;   // per pump
+const ITEM_CAPACITY = 0;     // per drill capacity
+const LIQUID_CAPACITY = 0;   // per pump capacity
 const MAX_TRANSFERS = 8;       // items per drill per frame
 const LIQUID_INTERVAL = 4;     // drill liquid dump every N frames
 const NO_PATH = 99999;
