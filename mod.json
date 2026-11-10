@@ -5,5 +5,6 @@
     "description": "Touching blocks work together as one; drills/pumps/factories/generators/reactors. A single input or output serves the whole line.",
     "subtitle": "by The Omega",
     "version": "1.10.0",
-    "minGameVersion": 146
+    "minGameVersion": 146,
+    "repo": "Ranii-Reprograms/Fluxweave",
 }
