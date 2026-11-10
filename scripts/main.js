@@ -8,10 +8,12 @@ const NO_PATH = 99999;
 const SHARE_FACTORY_ITEMS = true;  // set to false to share only liquids between factories
 const FACTORY_ITEM_INTERVAL = 3;   // share factory items every N frames
                                    // host/device dependent
+const DRILLS_ACCEPT_ITEMS = true;  // makes a drill pass items through them
 
 const PumpClass = (typeof Pump !== "undefined") ? Pump : null;
 const CrafterClass = (typeof GenericCrafter !== "undefined") ? GenericCrafter : null;
 const GeneratorClass = (typeof ConsumeGenerator !== "undefined") ? ConsumeGenerator : null;
+const TurretClass = (typeof BaseTurret !== "undefined") ? BaseTurret : null;
 const ReactorClasses = [];
 if (typeof NuclearReactor !== "undefined") ReactorClasses.push(NuclearReactor);
 if (typeof ImpactReactor !== "undefined") ReactorClasses.push(ImpactReactor);
@@ -44,8 +46,9 @@ const KINDS = {
     // touching ones of the same type balance the inputs they consume
     factory: {
         is: b => !isReactor(b) && (
-            (CrafterClass != null && b instanceof CrafterClass) ||
-            (GeneratorClass != null && b instanceof GeneratorClass)
+            (CrafterClass != null && b instanceof CrafterClass) || 
+            (GeneratorClass != null && b instanceof GeneratorClass) ||
+            (TurretClass != null && b instanceof TurretClass)
         ),
         exit: b => false
     }
@@ -102,6 +105,9 @@ function inputsOf(block) {
         if (block.consumesLiquid(l)) liquids.push(l);
     }
 
+    // turrets: share coolant/liquid ammo only, never item ammo
+    if (TurretClass != null && block instanceof TurretClass) items = [];
+
     // products that are not also consumed
     let pItems = outItems.filter(it => !block.consumesItem(it));
     let pLiquids = outLiquids.filter(l => !block.consumesLiquid(l));
@@ -153,6 +159,7 @@ function track(build) {
 // Distance of every block to the nearest chain member touching a valid exit.
 // Items/liquid only ever move to a strictly closer member, so they always
 // flow toward the exit and every member can drain completely (no back and forth ping-pong shit).
+
 function rebuildDistances() {
     dirty = false;
     let queue = [];
@@ -191,6 +198,7 @@ function rebuildDistances() {
 
     // Factory outputs: distance (in same-type factories) to the nearest factory
     // that touches something accepting its product.
+
     let qL = [];
     let qI = [];
     for (let i = 0; i < all.length; i++) {
@@ -226,6 +234,7 @@ function factoryBfs(queue, key) {
 // Sticky exit detection: a factory counts as an "exit" for its product while a
 // neighbouring block of another type keeps accepting it. Checked every few
 // frames; the flag is dropped only after ~2 seconds of nothing accepting.
+
 function detectExits(w) {
     let f = w.b;
     let block = f.block;
@@ -259,8 +268,11 @@ function detectExits(w) {
 Events.on(EventType.ClientLoadEvent, cons(e => {
     try {
         Vars.content.blocks().each(cons(b => {
-            if (KINDS.drill.is(b)) {
+              if (KINDS.drill.is(b)) {
                 b.itemCapacity = Math.max(b.itemCapacity, ITEM_CAPACITY);
+                if (DRILLS_ACCEPT_ITEMS && b.itemFilter != null) {
+                    for (let i = 0; i < b.itemFilter.length; i++) b.itemFilter[i] = true;
+                }
             } else if (KINDS.pump.is(b)) {
                 b.liquidCapacity = Math.max(b.liquidCapacity, LIQUID_CAPACITY);
             }
@@ -346,6 +358,7 @@ function processDrill(w, doLiquid) {
 
 // Vanilla pumps already push liquid into adjacent conduits/consumers, so we
 // only add the part vanilla lacks: forwarding to a closer pump in the chain.
+
 function processPump(w) {
     let pump = w.b;
     let liq = pump.liquids;
@@ -380,6 +393,7 @@ function processPump(w) {
 // below the neighbour's level), so one conduit can feed a whole row.
 // Only liquid is shared. Fuel/items are never touched..
 // because they will explode if you fail to supply the coolant first xd
+
 function processReactor(w) {
     let r = w.b;
     let liq = r.liquids;
@@ -415,6 +429,7 @@ function processReactor(w) {
 // (Im trying to avoid what unloaders do when they're in close contact to each factory)
 // and drain their products toward whichever factory touches an output.
 // Only exact same block types interact.
+
 function processFactory(w, doItems) {
     let f = w.b;
     let block = f.block;
