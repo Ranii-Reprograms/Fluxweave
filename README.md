@@ -10,7 +10,7 @@
 - Drills: Items flow through the chain toward the drill touching a conveyor, core or other block that accepts items, and every drill drains completely. Boost liquid like water is shared too, so one pipe into a single drill supplies the whole chain, albeit drills from the far end of a liquid supply may fill slower, shouldn't matter tho if you have a strong conduit (or just use the instant liquid travel method; i.e liquid junctions/container chaining). Passing a conveyor through a drill also transfers the items at any drill in a chain, and those items flow to the chain's exit.
 - Pumps: same idea, but each pump holds each other's liquid. Liquid is forwarded toward the pump touching a conduit or other liquid block.
 - Reactors: touching reactors balance their coolant level, fuller to emptier, so a single conduit into one reactor supplies the rest. Only coolant is shared. Fuel and other items are never moved between reactors.
-- Turrets: touching turrets of the same type share coolant, so one conduit cools a whole arsenal. Except item ammo. Item ammo is never moved. 
+- Turrets: touching turrets of the same type share coolant, so one conduit cools a whole battalion, except ammo, they still require seperate inputs. 
 - Factories: touching factories of the exact same type share both ends of the process (except unit factories).
   - Inputs: the liquids and items they consume are balanced between neighbors, so one pipe and one conveyor can feed a whole row or column of factories.
   - Outputs: the products spread toward whichever factory touches an output, so one conduit or conveyor can carry away the whole row's production. Only products come out, never inputs (a cryomixer outputs it's produced cryofluid, not its water).
