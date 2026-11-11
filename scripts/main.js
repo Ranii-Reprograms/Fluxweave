@@ -156,6 +156,17 @@ function track(build) {
     }
 }
 
+// A rotating block (conveyor, duct...) whose front faces this machine is an
+// INPUT line, not an exit. Without this check, the drill that the passing
+// conveyor feeds counts as "touching an exit" (d = 0), so the drills treat
+// it as the chain's end, push items towards it and they get stuck/bounce.
+function isInputFeeder(t, machine) {
+    try {
+        if (t.block.rotate && t.front() === machine) return true;
+    } catch (_) {}
+    return false;
+}
+
 // Distance of every block to the nearest chain member touching a valid exit.
 // Items/liquid only ever move to a strictly closer member, so they always
 // flow toward the exit and every member can drain completely (no back and forth ping-pong shit).
@@ -172,7 +183,7 @@ function rebuildDistances() {
         let prox = w.b.proximity;
         for (let j = 0; j < prox.size; j++) {
             let t = prox.get(j);
-            if (t != null && !K.is(t.block) && K.exit(t.block)) {
+            if (t != null && !K.is(t.block) && K.exit(t.block) && !isInputFeeder(t, w.b)) {
                 w.d = 0;
                 queue.push(w);
                 break;
@@ -265,10 +276,35 @@ function detectExits(w) {
     else if (w.exI && ++w.missI >= 12) { w.exI = false; w.missI = 0; dirty = true; lastChange = tick; }
 }
 
+// Drills now accept items (so conveyors can feed through them), which means
+// vanilla dump()/offload() would also hand items to a neighbouring drill in any
+// direction - that fights processDrill and creates the back-and-forth.
+// Drill -> drill transfer is handled ONLY by processDrill (towards the exit).
+function patchDrillDump(b) {
+    try {
+        if (!DRILLS_ACCEPT_ITEMS) return;
+        if (b.buildType == null) return;
+        // Only patch plain vanilla drills with the default build class. Modded
+        // drills with their own Drill subclass / custom build keep their logic.
+        if (String(b.getClass().getName()) !== "mindustry.world.blocks.production.Drill") return;
+        let inst = b.buildType.get();
+        if (String(inst.getClass().getName()) !== "mindustry.world.blocks.production.Drill$DrillBuild") return;
+        b.buildType = prov(() => extend(Drill.DrillBuild, b, {
+            canDump(to, item) {
+                if (to != null && to.block instanceof Drill) return false;
+                return this.super$canDump(to, item);
+            }
+        }));
+    } catch (e) {
+        logErr("patchDrillDump " + b.name, e);
+    }
+}
+
 Events.on(EventType.ClientLoadEvent, cons(e => {
     try {
         Vars.content.blocks().each(cons(b => {
               if (KINDS.drill.is(b)) {
+                patchDrillDump(b);
                 b.itemCapacity = Math.max(b.itemCapacity, ITEM_CAPACITY);
                 if (DRILLS_ACCEPT_ITEMS && b.itemFilter != null) {
                     for (let i = 0; i < b.itemFilter.length; i++) b.itemFilter[i] = true;
@@ -524,6 +560,8 @@ Events.run(Trigger.update, () => {
     tick++;
     let doLiquid = (tick % LIQUID_INTERVAL) === 0;
     let doFactoryItems = (tick % FACTORY_ITEM_INTERVAL) === 0;
+
+    if ((tick % 120) === 0) { dirty = true; lastChange = tick; }  // conveyor rotation fires no tile event
 
     // wait a few frames after a change so block proximity has updated
     if (dirty && tick - lastChange >= 6) {
