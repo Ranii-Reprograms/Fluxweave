@@ -281,6 +281,7 @@ function detectExits(w) {
 // direction - that fights processDrill and creates the back-and-forth.
 // Drill -> drill transfer is handled ONLY by processDrill (towards the exit).
 let patchedDrills = 0;
+let RAW = {};
 function patchDrillDump(b) {
     try {
         if (!DRILLS_ACCEPT_ITEMS) return;
@@ -314,18 +315,29 @@ function patchDrillDump(b) {
 
 Events.on(EventType.ClientLoadEvent, cons(e => {
     try {
+        RAW = {};
+        Vars.content.blocks().each(cons(blk => {
+            if (blk.itemDrop != null) RAW[blk.itemDrop.id] = true;
+        }));
+        ALL_ITEMS = [];
+        Vars.content.items().each(cons(i => ALL_ITEMS.push(i)));
         Vars.content.blocks().each(cons(b => {
               if (KINDS.drill.is(b)) {
                 patchDrillDump(b);
                 b.itemCapacity = Math.max(b.itemCapacity, ITEM_CAPACITY);
                 if (DRILLS_ACCEPT_ITEMS && b.itemFilter != null) {
-                    for (let i = 0; i < b.itemFilter.length; i++) b.itemFilter[i] = true;
+                    // Drills accept RAW items only (anything an ore/floor/wall can
+                    // drop: sand, coal, copper...). Crafted items such as silicon
+                    // or graphite are never accepted, so a smelter touching the
+                    // drills can't dump its output into them. This is a static
+                    // block flag, so it works even if patchDrillDump doesn't.
+                    for (let i = 0; i < b.itemFilter.length; i++) b.itemFilter[i] = !!RAW[i];
                 }
             } else if (KINDS.pump.is(b)) {
                 b.liquidCapacity = Math.max(b.liquidCapacity, LIQUID_CAPACITY);
             }
         }));
-        Vars.ui.showInfoToast("Fluxweave: drill patch applied to " + patchedDrills + " drill(s)", 6);
+        Vars.ui.showInfoToast("Fluxweave: drill patch " + patchedDrills + " drill(s), raw items " + Object.keys(RAW).length, 6);
     } catch (err) {
         logErr("ClientLoadEvent", err);
     }
@@ -339,6 +351,7 @@ Events.on(EventType.WorldLoadEvent, cons(e => {
         Groups.build.each(cons(b => track(b)));
         dirty = true;
         lastChange = tick;
+        Vars.ui.showInfoToast("Fluxweave v1.11.2: drill patch " + patchedDrills + ", raw items " + Object.keys(RAW).length + ", tracking " + all.length, 6);
     } catch (err) {
         logErr("WorldLoadEvent", err);
     }
@@ -354,6 +367,7 @@ Events.on(EventType.TileChangeEvent, cons(e => {
     }
 }));
 
+let ALL_ITEMS = [];
 function processDrill(w, doLiquid) {
     let drill = w.b;
 
@@ -370,38 +384,41 @@ function processDrill(w, doLiquid) {
     let pSize = prox.size;
     if (pSize === 0) return;
 
-    let item = items.first();
-    if (item == null) return;
-
     w.rot++;
-    let transfers = 0;
+    let budget = MAX_TRANSFERS;
 
-    while (transfers < MAX_TRANSFERS && items.get(item) > 0) {
-        let moved = false;
+    // Try EVERY item type the drill holds, not only items.first(): otherwise
+    // an item that cannot move (e.g. sand when the smelter is full of sand)
+    // blocks every other item behind it (e.g. the coal the smelter needs).
+    for (let ii = 0; ii < ALL_ITEMS.length && budget > 0; ii++) {
+        let item = ALL_ITEMS[ii];
+        while (budget > 0 && items.get(item) > 0) {
+            let moved = false;
 
-        for (let j = 0; j < pSize; j++) {
-            let target = prox.get((j + w.rot) % pSize);
-            if (target == null) continue;
+            for (let j = 0; j < pSize; j++) {
+                let target = prox.get((j + w.rot) % pSize);
+                if (target == null) continue;
 
-            if (target.block instanceof Drill) {
-                let tw = byId[target.id];
-                if (tw != null && tw.d < w.d && target.items != null &&
-                    target.items.get(item) < target.block.itemCapacity) {
+                if (target.block instanceof Drill) {
+                    let tw = byId[target.id];
+                    if (tw != null && tw.d < w.d && target.items != null &&
+                        target.items.get(item) < target.block.itemCapacity) {
+                        items.remove(item, 1);
+                        target.items.add(item, 1);
+                        moved = true;
+                        break;
+                    }
+                } else if (target.acceptItem(drill, item)) {
                     items.remove(item, 1);
-                    target.items.add(item, 1);
+                    target.handleItem(drill, item);
                     moved = true;
                     break;
                 }
-            } else if (target.acceptItem(drill, item)) {
-                items.remove(item, 1);
-                target.handleItem(drill, item);
-                moved = true;
-                break;
             }
-        }
 
-        if (!moved) break;
-        transfers++;
+            if (!moved) break;   // this item is stuck, go on with the next type
+            budget--;
+        }
     }
 }
 
