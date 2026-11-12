@@ -299,8 +299,10 @@ function patchDrillDump(b) {
             // crafters (e.g. a furnace dumping its silicon into the drills) or
             // from other drills (processDrill moves those itself).
             acceptItem(source, item) {
-                if (source != null && (source.block instanceof Drill ||
-                    (CrafterClass != null && source.block instanceof CrafterClass))) return false;
+                // Allowlist: only transport blocks (conveyors, bridges, junctions,
+                // routers, sorters...) may insert items. Crafters of any kind,
+                // drills and everything else are refused.
+                if (source != null && source.block.group !== BlockGroup.transportation) return false;
                 return this.super$acceptItem(source, item);
             }
         }));
