@@ -4,7 +4,7 @@
     "author": "Ranii",
     "description": "Touching blocks work together as one; drills/pumps/factories/generators/reactors. A single input or output serves the whole line.\n\nv1.11.2\nTurrets: touching turrets of the same type share coolant, so one conduit cools a whole arsenal of turrets, except ammo, they still need seperate ammo inputs.\nConveyors can now pass items through any drill in a chain, and those items flow to the chain's exit. \n\nv1.10.0 - Balance update\nDrill and pump capacities lowered from 150 to their vanilla values (e.g. pneumatic drill = 10) to keep them balanced.\n\nv1.9.1 - Hotfix\nFixed long chains of factories (more than 5) not fully emptying through a single output. Products now drain toward the factory touching an output, so the far end empties too. If the output is removed or blocked for a while, the chain spreads evenly again and recovers when another output line is connected. One output line can only carry so much, so use a faster line if a chain backs up.\n\nv1.9\nReactors: touching reactors balance their coolant, so one conduit feeds the whole row. Fuel is never moved.\nFactories: touching factories of the same type share inputs and outputs, so one pipe, conveyor and output line serve a whole row.\nDrills: boost liquid like water is now shared along the chain.\nFixed a crash on Android and drills' outputs getting stuck next to walls.",
     "subtitle": "by The Omega",
-    "version": "1.11.6",
+    "version": "1.11.7",
     "minGameVersion": 146,
     "repo": "Ranii-Reprograms/Fluxweave"
 }
