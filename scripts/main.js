@@ -280,6 +280,7 @@ function detectExits(w) {
 // vanilla dump()/offload() would also hand items to a neighbouring drill in any
 // direction - that fights processDrill and creates the back-and-forth.
 // Drill -> drill transfer is handled ONLY by processDrill (towards the exit).
+let patchedDrills = 0;
 function patchDrillDump(b) {
     try {
         if (!DRILLS_ACCEPT_ITEMS) return;
@@ -293,8 +294,17 @@ function patchDrillDump(b) {
             canDump(to, item) {
                 if (to != null && to.block instanceof Drill) return false;
                 return this.super$canDump(to, item);
+            },
+            // Drills take items from conveyors (pass-through), but never from
+            // crafters (e.g. a furnace dumping its silicon into the drills) or
+            // from other drills (processDrill moves those itself).
+            acceptItem(source, item) {
+                if (source != null && (source.block instanceof Drill ||
+                    (CrafterClass != null && source.block instanceof CrafterClass))) return false;
+                return this.super$acceptItem(source, item);
             }
         }));
+        patchedDrills++;
     } catch (e) {
         logErr("patchDrillDump " + b.name, e);
     }
@@ -313,6 +323,7 @@ Events.on(EventType.ClientLoadEvent, cons(e => {
                 b.liquidCapacity = Math.max(b.liquidCapacity, LIQUID_CAPACITY);
             }
         }));
+        Vars.ui.showInfoToast("Fluxweave: drill patch applied to " + patchedDrills + " drill(s)", 6);
     } catch (err) {
         logErr("ClientLoadEvent", err);
     }
