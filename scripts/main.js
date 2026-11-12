@@ -351,7 +351,6 @@ Events.on(EventType.WorldLoadEvent, cons(e => {
         Groups.build.each(cons(b => track(b)));
         dirty = true;
         lastChange = tick;
-        Vars.ui.showInfoToast("Fluxweave v1.11.2: drill patch " + patchedDrills + ", raw items " + Object.keys(RAW).length + ", tracking " + all.length, 6);
     } catch (err) {
         logErr("WorldLoadEvent", err);
     }
