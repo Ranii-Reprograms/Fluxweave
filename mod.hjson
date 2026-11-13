@@ -1,0 +1,35 @@
+{
+  name: fluxweave
+  displayName: Fluxweave
+  author: Ranii
+  subtitle: by The Omega
+  version: "1.11.7"
+  minGameVersion: 146
+  repo: Ranii-Reprograms/Fluxweave
+  description:
+    '''
+    Machines close to each other work together as one; drills, pumps, factories, generators, reactors. A single input or output serves the whole line.
+
+    v1.11.7
+    Drills now accept raw items only, so crafted items like silicon can't enter them. This makes the drills uncloggable when placed alongside factories
+    This makes for neat base designs because I have ocd and I cant take it when I see them all wonky ahh
+
+    v1.11.3
+    Fixed the drills that "were" letting items pass through them... but it was inconsistent.. this problem also broke my intention of being able to chain them with factories that require their inputs but they were also exporting their produced materials to the drills instead xd
+
+    v1.11.2
+    Turrets: chaining turrets of the same type share coolant, so one conduit cools a whole arsenal of turrets, except ammo. They still need seperate ammo inputs tho
+    Conveyors can now pass items through any drill in a chain, and those items flow to the chain's exit
+
+    v1.10.0 - Balance update
+    Drill and pump capacities lowered from 50 to their vanilla values (e.g. pneumatic drill = 10 item capacity) to keep them balanced
+
+    v1.9.1 - Hotfix
+    Fixed long chains of factories (more than 5) not fully emptying through a single output. Products now drain toward the factory touching an output, so the far end empties too. If the output is removed or blocked for a while, the chain spreads evenly again and recovers when another output line is connected. One output line can only carry so much, so use a faster or higher storage belt if a chain holds up
+
+    v1.9
+    Reactors: touching reactors balance their coolant, so one conduit feeds the whole row. However, fuel is never moved
+    Factories: touching factories of the same type share inputs and outputs, so one pipe, conveyor and output line serve a whole row (except unit factories)
+    Drills: boost liquids like water is now shared along the chain
+    '''
+} 
