@@ -1,3 +1,6 @@
+## v1.11.8
+- Releases are now automated to include a changelog description (no gameplay changes).
+
 ## v1.11.7
 - Drills now accept raw items only, so crafted items like silicon can't enter them. This makes the drills uncloggable when placed alongside factories.
 - This makes for neat base designs because I have ocd and I cant take it when I see them all wonky ahh.
