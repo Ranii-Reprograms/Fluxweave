@@ -24,11 +24,29 @@ jobs:
       - name: Zip mod
         if: steps.t.outputs.exists == 'false'
         run: zip -r Fluxweave.zip . -x ".git/*" ".github/*"
+      - name: Extract notes
+        if: steps.t.outputs.exists == 'false'
+        run: |
+          VER="${{ steps.v.outputs.version }}"
+          git fetch --tags --quiet
+          PREV=$(git tag --sort=-v:refname | grep -vx "v$VER" | head -n1)
+          BODY=$(awk -v v="## v$VER" \
+            'index($0,v)==1{f=1;next} /^## /{f=0} f' CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="No changelog entry for this version."
+          fi
+          {
+            if [ -n "$PREV" ]; then
+              echo "**Full Changelog**: [$PREV...v$VER](https://github.com/${{ github.repository }}/compare/$PREV...v$VER)"
+              echo
+            fi
+            echo "$BODY"
+          } > "$RUNNER_TEMP/notes.md"
       - name: Create release
         if: steps.t.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.v.outputs.version }}
           name: v${{ steps.v.outputs.version }} of Fluxweave
-          generate_release_notes: true
+          body_path: ${{ runner.temp }}/notes.md
           files: Fluxweave.zip
