@@ -17,7 +17,7 @@
     v1.11.3
     Fixed the drills that "were" letting items pass through them... but it was inconsistent.. this problem also broke my intention of being able to chain them with factories that require their inputs but they were also exporting their produced materials to the drills instead xd
 
-    v1.11.2
+    v1.11.1
     Turrets: chaining turrets of the same type share coolant, so one conduit cools a whole arsenal of turrets, except ammo. They still need seperate ammo inputs tho
     Conveyors can now pass items through any drill in a chain, and those items flow to the chain's exit
 
